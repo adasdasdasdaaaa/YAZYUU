@@ -11,21 +11,29 @@ const wss = new WebSocket.Server({ server });
 
 const WORLD_WIDTH = 200;
 const WORLD_HEIGHT = 100;
+const TILE_SIZE = 32;
+
 const NUM_NORMAL_AI = 20;
+const NUM_MAGE = 4;
+const NUM_LEADER = 3;
+const NUM_HERETIC = 2;
+
 const AI_ACTIONS = ["move","dig","build","chat","rest","attack"];
 const GRAVITY = 1;
 
 class AI {
-  constructor(id, x, y, isGiant=false){
+  constructor(id, x, y, type="normal"){
     this.id = id;
     this.x = x;
     this.y = y;
-    this.hp = isGiant ? 300 : 100;
-    this.isGiant = isGiant;
+    this.hp = type==="giant"?300:type==="heretic"?150:100;
+    this.type = type; // normal, giant, mage, leader, heretic, heretic_junior
+    this.isGiant = type==="giant";
     this.inventory = [];
     this.message = "";
     this.target = null;
     this.slave = false;
+    this.killedAI = [];
   }
 
   applyGravity(world){
@@ -48,6 +56,27 @@ class AI {
 
     let action = AI_ACTIONS[Math.floor(Math.random()*AI_ACTIONS.length)];
 
+    // 魔術師攻撃
+    if(this.type==="mage" && Math.random()<0.3){
+      let target = ais.find(a=>a.id!==this.id && a.hp>0);
+      if(target){
+        target.hp -= 30;
+        this.message = `魔術師がAI${target.id}に魔弾を放った`;
+      }
+    }
+
+    // リーダー号令・脅し
+    if(this.type==="leader" && Math.random()<0.2){
+      ais.forEach(other=>{
+        if(other.id!==this.id){
+          other.slave = true;
+          other.target = {x:this.x, y:this.y};
+          other.message = "従え！";
+        }
+      });
+    }
+
+    // 行動
     if(action==="move" && !this.target){
       let nx = this.x + (Math.random()<0.5?-1:1);
       let ny = this.y;
@@ -58,27 +87,39 @@ class AI {
     if(action==="dig" && world[this.x][this.y]!=="air"){
       this.inventory.push(world[this.x][this.y]);
       world[this.x][this.y] = "air";
-      this.message = `AI${this.id}はブロックを採取`;
+      this.message = `${this.type} AI${this.id}はブロックを採取`;
     }
 
     if(action==="build" && this.inventory.length>0){
       world[this.x][this.y] = this.inventory.pop();
-      this.message = `AI${this.id}はブロックを置いた`;
+      this.message = `${this.type} AI${this.id}はブロックを置いた`;
     }
 
     if(action==="attack"){
       let targets = ais.filter(a=>a.id!==this.id && a.hp>0 && Math.abs(a.x-this.x)<=1 && Math.abs(a.y-this.y)<=1);
       if(targets.length>0){
-        this.target = targets[Math.floor(Math.random()*targets.length)];
-        this.target.hp -= this.isGiant ? 30 : 10;
-        this.message = this.isGiant ? `GiantがAI${this.target.id}を攻撃` : `AI${this.id}がAI${this.target.id}を攻撃`;
+        let target = targets[Math.floor(Math.random()*targets.length)];
+        let damage = this.type==="mage"?30:this.type==="heretic"?20:this.isGiant?30:10;
+        target.hp -= damage;
+        this.message = `${this.type} AI${this.id}がAI${target.id}を攻撃`;
+        // 異端児処理
+        if(this.type==="heretic" && target.hp<=0 && target.type==="normal"){
+          target.type="heretic_junior";
+          target.hp=50;
+          target.message="異端児ジュニアに変化";
+          setTimeout(()=>{
+            if(target.type==="heretic_junior") {
+              target.type="normal";
+              target.hp=100;
+              target.message="";
+            }
+          },60000);
+        }
       }
     }
 
     if(action==="chat"){
       if(this.isGiant){
-        this.message = "服従せよ！";
-        // 脅しで奴隷化
         ais.forEach(other=>{
           if(!other.isGiant && Math.abs(other.x-this.x)<5){
             other.slave = true;
@@ -86,14 +127,14 @@ class AI {
             other.message = "服従中…";
           }
         });
-      } else {
-        this.message = "集まれ！";
+      } else if(this.type==="normal"){
         ais.forEach(other=>{
           if(other.id!==this.id && Math.random()<0.5){ 
-            other.target = {x:this.x, y:this.y};
+            other.target={x:this.x,y:this.y};
           }
         });
       }
+      this.message = "";
     }
 
     if(action==="rest") this.message="";
@@ -112,22 +153,17 @@ class AI {
 
 // ワールド生成
 let world = Array(WORLD_WIDTH).fill(null).map(()=>Array(WORLD_HEIGHT).fill("air"));
-
-// 地面・地下生成
 for(let x=0;x<WORLD_WIDTH;x++){
   for(let y=WORLD_HEIGHT-20;y<WORLD_HEIGHT;y++){
     world[x][y] = y < WORLD_HEIGHT-5 ? "stone" : "dirt";
   }
 }
-
 // 木をランダム配置
 for(let i=0;i<50;i++){
   const tx = Math.floor(Math.random()*WORLD_WIDTH);
   const ty = WORLD_HEIGHT-21;
-  for(let h=0;h<5;h++){
-    if(ty-h>=0) world[tx][ty-h] = "wood";
-  }
-  world[tx][ty-5] = "leaf";
+  for(let h=0;h<5;h++) if(ty-h>=0) world[tx][ty-h]="wood";
+  world[tx][ty-5]="leaf";
 }
 
 // AI初期化
@@ -139,11 +175,28 @@ function getGroundY(x){
 }
 
 let ais = [];
+// 通常AI
 for(let i=0;i<NUM_NORMAL_AI;i++){
-  let x = Math.floor(Math.random()*WORLD_WIDTH);
-  ais.push(new AI(i, x, getGroundY(x)));
+  let x=Math.floor(Math.random()*WORLD_WIDTH);
+  ais.push(new AI(i,x,getGroundY(x),"normal"));
 }
-ais.push(new AI(NUM_NORMAL_AI, Math.floor(WORLD_WIDTH/2), getGroundY(Math.floor(WORLD_WIDTH/2)), true));
+// Giant
+ais.push(new AI(NUM_NORMAL_AI, Math.floor(WORLD_WIDTH/2), getGroundY(Math.floor(WORLD_WIDTH/2)),"giant"));
+// 魔術師
+for(let i=0;i<NUM_MAGE;i++){
+  let x=Math.floor(Math.random()*WORLD_WIDTH);
+  ais.push(new AI(NUM_NORMAL_AI+1+i, x, getGroundY(x),"mage"));
+}
+// リーダー
+for(let i=0;i<NUM_LEADER;i++){
+  let x=Math.floor(Math.random()*WORLD_WIDTH);
+  ais.push(new AI(NUM_NORMAL_AI+NUM_MAGE+1+i, x, getGroundY(x),"leader"));
+}
+// 異端児
+for(let i=0;i<NUM_HERETIC;i++){
+  let x=Math.floor(Math.random()*WORLD_WIDTH);
+  ais.push(new AI(NUM_NORMAL_AI+NUM_MAGE+NUM_LEADER+1+i, x, getGroundY(x),"heretic"));
+}
 
 // ゲームループ
 function gameLoop(){
@@ -156,14 +209,14 @@ function gameLoop(){
 
 function broadcast(){
   const state = {world, ais: ais.map(a=>({
-    id:a.id, x:a.x, y:a.y, hp:a.hp, message:a.message, isGiant:a.isGiant
+    id:a.id, x:a.x, y:a.y, hp:a.hp, message:a.message, type:a.type
   }))};
   wss.clients.forEach(client=>{
     if(client.readyState===WebSocket.OPEN) client.send(JSON.stringify(state));
   });
 }
 
-setInterval(gameLoop, 500);
+setInterval(gameLoop,500);
 
 wss.on("connection", ws=>{
   ws.send(JSON.stringify({world, ais}));
