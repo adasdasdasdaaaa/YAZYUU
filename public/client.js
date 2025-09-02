@@ -9,6 +9,18 @@ let ais = [];
 let cameraX = 0;
 let cameraY = 0;
 
+const TILE_SIZE = 16;
+const NORMAL_AI_SIZE = 24;
+const GIANT_SIZE = 32;
+
+// Canvasを画面全体にリサイズ
+function resizeCanvas(){
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+}
+window.addEventListener("resize", resizeCanvas);
+resizeCanvas();
+
 ws.onmessage = e=>{
   const data = JSON.parse(e.data);
   world = data.world;
@@ -17,10 +29,7 @@ ws.onmessage = e=>{
   updateLog();
 }
 
-const TILE_SIZE = 16;
-const NORMAL_AI_SIZE = 24;
-const GIANT_SIZE = 32;
-
+// キーでスクロール
 document.addEventListener("keydown", e=>{
   const speed = 16;
   if(e.key==="ArrowLeft") cameraX = Math.max(0, cameraX - speed);
@@ -32,6 +41,7 @@ document.addEventListener("keydown", e=>{
 function draw(){
   ctx.clearRect(0,0,canvas.width,canvas.height);
 
+  // ワールド描画
   for(let x=0;x<world.length;x++){
     for(let y=0;y<world[0].length;y++){
       let color = "#073"; // 空
@@ -46,6 +56,7 @@ function draw(){
     }
   }
 
+  // AI描画
   ais.forEach(ai=>{
     const size = ai.isGiant ? GIANT_SIZE : NORMAL_AI_SIZE;
     const color = ai.isGiant ? "#f00" : "#00f";
