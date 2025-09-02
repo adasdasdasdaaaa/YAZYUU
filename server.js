@@ -74,10 +74,8 @@ class AI {
 
     // 行動
     if(this.type==="normal" && this.slave){
-      // 奴隷は王の城を建設
       let castle = castles.find(c=>c.owner===this.target?.id);
       if(castle){
-        // 1ブロックずつ建設
         if(castle.buildQueue.length>0){
           let b = castle.buildQueue.shift();
           if(world[b.x][b.y]==="air") world[b.x][b.y]=b.type;
@@ -129,6 +127,7 @@ for(let x=0;x<WORLD_WIDTH;x++){
     world[x][y] = y < WORLD_HEIGHT-5 ? "stone" : "dirt";
   }
 }
+
 // 木をランダム配置
 for(let i=0;i<50;i++){
   const tx = Math.floor(Math.random()*WORLD_WIDTH);
@@ -150,14 +149,23 @@ for(let i=0;i<NUM_NORMAL_AI;i++){
   let x=Math.floor(Math.random()*WORLD_WIDTH);
   ais.push(new AI(i,x,getGroundY(x),"normal"));
 }
+
+// Giant
 ais.push(new AI(NUM_NORMAL_AI, Math.floor(WORLD_WIDTH/2), getGroundY(Math.floor(WORLD_WIDTH/2)),"giant"));
+
+// Mage
 for(let i=0;i<NUM_MAGE;i++){
   let x=Math.floor(Math.random()*WORLD_WIDTH);
   ais.push(new AI(NUM_NORMAL_AI+1+i, x, getGroundY(x),"mage"));
+}
+
+// Leader
 for(let i=0;i<NUM_LEADER;i++){
   let x=Math.floor(Math.random()*WORLD_WIDTH);
   ais.push(new AI(NUM_NORMAL_AI+NUM_MAGE+1+i, x, getGroundY(x),"leader"));
 }
+
+// Heretic
 for(let i=0;i<NUM_HERETIC;i++){
   let x=Math.floor(Math.random()*WORLD_WIDTH);
   ais.push(new AI(NUM_NORMAL_AI+NUM_MAGE+NUM_LEADER+1+i, x, getGroundY(x),"heretic"));
@@ -200,7 +208,7 @@ function broadcast(){
 setInterval(gameLoop,500);
 
 wss.on("connection", ws=>{
-  ws.send(JSON.stringify({world, ais}));
+  ws.send(JSON.stringify({world, ais, castles}));
 });
 
 server.listen(process.env.PORT||3000, ()=>console.log("Server running"));
