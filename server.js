@@ -32,6 +32,7 @@ class AI {
     this.message = "";
     this.target = null;
     this.slave = false;
+    this.masterId = null; // 従属している王のID
     this.killedAI = [];
   }
 
@@ -44,6 +45,22 @@ class AI {
   act(world, ais, castles){
     if(this.hp<=0) return;
 
+    // 奴隷は王の周りに従う
+    if(this.type==="normal" && this.slave){
+      let master = ais.find(a=>a.id===this.masterId);
+      if(master){
+        if(Math.abs(master.x - this.x) > 1) this.x += Math.sign(master.x - this.x);
+        if(Math.abs(master.y - this.y) > 1) this.y += Math.sign(master.y - this.y);
+
+        // 王の城建設
+        let castle = castles.find(c=>c.owner===master.id);
+        if(castle && castle.buildQueue.length>0){
+          let b = castle.buildQueue.shift();
+          if(world[b.x][b.y]==="air") world[b.x][b.y]=b.type;
+        }
+      }
+    }
+
     // 目標追従
     if(this.target){
       this.x += Math.sign(this.target.x - this.x);
@@ -54,7 +71,7 @@ class AI {
     this.applyGravity(world);
 
     // 魔術師攻撃
-    if(this.type==="mage" && Math.random()<0.3){
+    if(this.type==="mage" && Math.random()<0.4){
       let target = ais.find(a=>a.id!==this.id && a.hp>0);
       if(target){
         target.hp -= 30;
@@ -63,10 +80,11 @@ class AI {
     }
 
     // リーダー号令・脅し
-    if(this.type==="leader" && Math.random()<0.2){
+    if(this.type==="leader" && Math.random()<0.3){
       ais.forEach(other=>{
-        if(other.id!==this.id){
+        if(other.id!==this.id && other.type==="normal"){
           other.slave = true;
+          other.masterId = this.id;
           other.target = {x:this.x, y:this.y};
         }
       });
@@ -74,13 +92,7 @@ class AI {
 
     // 行動
     if(this.type==="normal" && this.slave){
-      let castle = castles.find(c=>c.owner===this.target?.id);
-      if(castle){
-        if(castle.buildQueue.length>0){
-          let b = castle.buildQueue.shift();
-          if(world[b.x][b.y]==="air") world[b.x][b.y]=b.type;
-        }
-      }
+      // 奴隷は上で処理済み
     } else {
       if(Math.random()<0.3){
         let nx = this.x + (Math.random()<0.5?-1:1);
@@ -88,11 +100,11 @@ class AI {
       }
     }
 
-    // 近接攻撃
+    // 近接攻撃（攻撃性強化）
     let targets = ais.filter(a=>a.id!==this.id && a.hp>0 && Math.abs(a.x-this.x)<=1 && Math.abs(a.y-this.y)<=1);
-    if(targets.length>0 && Math.random()<0.2){
+    if(targets.length>0 && Math.random()<0.5){
       let target = targets[Math.floor(Math.random()*targets.length)];
-      let damage = this.type==="mage"?30:this.type==="heretic"?20:this.isGiant?30:10;
+      let damage = this.type==="mage"?30:this.type==="heretic"?25:this.isGiant?30:15;
       target.hp -= damage;
       target.attackEffect = {x:target.x, y:target.y, type:"hit", timer:5};
 
@@ -116,6 +128,7 @@ class AI {
     this.y = getGroundY(this.x);
     this.inventory = [];
     this.slave = false;
+    this.masterId = null;
     this.target = null;
   }
 }
@@ -198,7 +211,7 @@ function gameLoop(){
 
 function broadcast(){
   const state = {world, ais: ais.map(a=>({
-    id:a.id, x:a.x, y:a.y, hp:a.hp, type:a.type, attackEffect:a.attackEffect||null, slave:a.slave
+    id:a.id, x:a.x, y:a.y, hp:a.hp, type:a.type, attackEffect:a.attackEffect||null, slave:a.slave, masterId:a.masterId
   })), castles};
   wss.clients.forEach(client=>{
     if(client.readyState===WebSocket.OPEN) client.send(JSON.stringify(state));
