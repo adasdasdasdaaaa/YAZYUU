@@ -58,12 +58,13 @@ function draw(){
 
   // AI描画
   ais.forEach(ai=>{
-    const size = ai.isGiant ? GIANT_SIZE : NORMAL_AI_SIZE;
-    const color = ai.isGiant ? "#f00" : "#00f";
-    const emoji = ai.isGiant ? "👨‍🍳" : "👦";
-
-    ctx.fillStyle = color;
-    ctx.fillRect(ai.x*TILE_SIZE - cameraX, ai.y*TILE_SIZE - cameraY, size, size);
+    const size = ai.type==="giant"?GIANT_SIZE:NORMAL_AI_SIZE;
+    let emoji = "👦";
+    if(ai.type==="giant") emoji="👨‍🍳";
+    else if(ai.type==="mage") emoji="🧙";
+    else if(ai.type==="leader") emoji="👑";
+    else if(ai.type==="heretic") emoji="😈";
+    else if(ai.type==="heretic_junior") emoji="👿";
 
     ctx.font = `${size}px sans-serif`;
     ctx.textAlign = "center";
