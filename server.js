@@ -18,7 +18,6 @@ const NUM_MAGE = 4;
 const NUM_LEADER = 3;
 const NUM_HERETIC = 2;
 
-const AI_ACTIONS = ["move","dig","build","chat","rest","attack"];
 const GRAVITY = 1;
 
 class AI {
@@ -27,7 +26,7 @@ class AI {
     this.x = x;
     this.y = y;
     this.hp = type==="giant"?300:type==="heretic"?150:100;
-    this.type = type; // normal, giant, mage, leader, heretic, heretic_junior
+    this.type = type;
     this.isGiant = type==="giant";
     this.inventory = [];
     this.message = "";
@@ -42,7 +41,7 @@ class AI {
     }
   }
 
-  act(world, ais){
+  act(world, ais, castles){
     if(this.hp<=0) return;
 
     // 目標追従
@@ -54,14 +53,12 @@ class AI {
 
     this.applyGravity(world);
 
-    let action = AI_ACTIONS[Math.floor(Math.random()*AI_ACTIONS.length)];
-
     // 魔術師攻撃
     if(this.type==="mage" && Math.random()<0.3){
       let target = ais.find(a=>a.id!==this.id && a.hp>0);
       if(target){
         target.hp -= 30;
-        this.message = `魔術師がAI${target.id}に魔弾を放った`;
+        target.attackEffect = {x:target.x, y:target.y, type:"magic", timer:10};
       }
     }
 
@@ -71,73 +68,48 @@ class AI {
         if(other.id!==this.id){
           other.slave = true;
           other.target = {x:this.x, y:this.y};
-          other.message = "従え！";
         }
       });
     }
 
     // 行動
-    if(action==="move" && !this.target){
-      let nx = this.x + (Math.random()<0.5?-1:1);
-      let ny = this.y;
-      if(nx>=0 && nx<WORLD_WIDTH && world[nx][ny+1]!=="air") this.x = nx;
-      this.message = this.isGiant ? "我こそがこの地の王だ" : "";
-    }
-
-    if(action==="dig" && world[this.x][this.y]!=="air"){
-      this.inventory.push(world[this.x][this.y]);
-      world[this.x][this.y] = "air";
-      this.message = `${this.type} AI${this.id}はブロックを採取`;
-    }
-
-    if(action==="build" && this.inventory.length>0){
-      world[this.x][this.y] = this.inventory.pop();
-      this.message = `${this.type} AI${this.id}はブロックを置いた`;
-    }
-
-    if(action==="attack"){
-      let targets = ais.filter(a=>a.id!==this.id && a.hp>0 && Math.abs(a.x-this.x)<=1 && Math.abs(a.y-this.y)<=1);
-      if(targets.length>0){
-        let target = targets[Math.floor(Math.random()*targets.length)];
-        let damage = this.type==="mage"?30:this.type==="heretic"?20:this.isGiant?30:10;
-        target.hp -= damage;
-        this.message = `${this.type} AI${this.id}がAI${target.id}を攻撃`;
-        // 異端児処理
-        if(this.type==="heretic" && target.hp<=0 && target.type==="normal"){
-          target.type="heretic_junior";
-          target.hp=50;
-          target.message="異端児ジュニアに変化";
-          setTimeout(()=>{
-            if(target.type==="heretic_junior") {
-              target.type="normal";
-              target.hp=100;
-              target.message="";
-            }
-          },60000);
+    if(this.type==="normal" && this.slave){
+      // 奴隷は王の城を建設
+      let castle = castles.find(c=>c.owner===this.target?.id);
+      if(castle){
+        // 1ブロックずつ建設
+        if(castle.buildQueue.length>0){
+          let b = castle.buildQueue.shift();
+          if(world[b.x][b.y]==="air") world[b.x][b.y]=b.type;
         }
       }
-    }
-
-    if(action==="chat"){
-      if(this.isGiant){
-        ais.forEach(other=>{
-          if(!other.isGiant && Math.abs(other.x-this.x)<5){
-            other.slave = true;
-            other.target = {x:this.x, y:this.y};
-            other.message = "服従中…";
-          }
-        });
-      } else if(this.type==="normal"){
-        ais.forEach(other=>{
-          if(other.id!==this.id && Math.random()<0.5){ 
-            other.target={x:this.x,y:this.y};
-          }
-        });
+    } else {
+      if(Math.random()<0.3){
+        let nx = this.x + (Math.random()<0.5?-1:1);
+        if(nx>=0 && nx<WORLD_WIDTH) this.x = nx;
       }
-      this.message = "";
     }
 
-    if(action==="rest") this.message="";
+    // 近接攻撃
+    let targets = ais.filter(a=>a.id!==this.id && a.hp>0 && Math.abs(a.x-this.x)<=1 && Math.abs(a.y-this.y)<=1);
+    if(targets.length>0 && Math.random()<0.2){
+      let target = targets[Math.floor(Math.random()*targets.length)];
+      let damage = this.type==="mage"?30:this.type==="heretic"?20:this.isGiant?30:10;
+      target.hp -= damage;
+      target.attackEffect = {x:target.x, y:target.y, type:"hit", timer:5};
+
+      // 異端児処理
+      if(this.type==="heretic" && target.hp<=0 && target.type==="normal"){
+        target.type="heretic_junior";
+        target.hp=50;
+        setTimeout(()=>{
+          if(target.type==="heretic_junior") {
+            target.type="normal";
+            target.hp=100;
+          }
+        },60000);
+      }
+    }
   }
 
   respawn(){
@@ -145,7 +117,6 @@ class AI {
     this.x = Math.floor(Math.random()*WORLD_WIDTH);
     this.y = getGroundY(this.x);
     this.inventory = [];
-    this.message = this.isGiant ? "我こそがこの地の王だ" : "";
     this.slave = false;
     this.target = null;
   }
@@ -166,7 +137,6 @@ for(let i=0;i<50;i++){
   world[tx][ty-5]="leaf";
 }
 
-// AI初期化
 function getGroundY(x){
   for(let y=0;y<WORLD_HEIGHT;y++){
     if(world[x][y]!=="air") return y-1;
@@ -174,34 +144,45 @@ function getGroundY(x){
   return WORLD_HEIGHT-21;
 }
 
+// AI初期化
 let ais = [];
-// 通常AI
 for(let i=0;i<NUM_NORMAL_AI;i++){
   let x=Math.floor(Math.random()*WORLD_WIDTH);
   ais.push(new AI(i,x,getGroundY(x),"normal"));
 }
-// Giant
 ais.push(new AI(NUM_NORMAL_AI, Math.floor(WORLD_WIDTH/2), getGroundY(Math.floor(WORLD_WIDTH/2)),"giant"));
-// 魔術師
 for(let i=0;i<NUM_MAGE;i++){
   let x=Math.floor(Math.random()*WORLD_WIDTH);
   ais.push(new AI(NUM_NORMAL_AI+1+i, x, getGroundY(x),"mage"));
-}
-// リーダー
 for(let i=0;i<NUM_LEADER;i++){
   let x=Math.floor(Math.random()*WORLD_WIDTH);
   ais.push(new AI(NUM_NORMAL_AI+NUM_MAGE+1+i, x, getGroundY(x),"leader"));
 }
-// 異端児
 for(let i=0;i<NUM_HERETIC;i++){
   let x=Math.floor(Math.random()*WORLD_WIDTH);
   ais.push(new AI(NUM_NORMAL_AI+NUM_MAGE+NUM_LEADER+1+i, x, getGroundY(x),"heretic"));
 }
 
+// 城管理
+let castles = [];
+ais.forEach(ai=>{
+  if(ai.type==="giant" || ai.type==="leader"){
+    let cx = ai.x-3;
+    let cy = ai.y-3;
+    let buildQueue=[];
+    for(let dx=0;dx<7;dx++){
+      for(let dy=0;dy<7;dy++){
+        buildQueue.push({x:cx+dx,y:cy+dy,type:"stone"});
+      }
+    }
+    castles.push({owner:ai.id, buildQueue});
+  }
+});
+
 // ゲームループ
 function gameLoop(){
   ais.forEach(ai=>{
-    ai.act(world, ais);
+    ai.act(world, ais, castles);
     if(ai.hp<=0) ai.respawn();
   });
   broadcast();
@@ -209,8 +190,8 @@ function gameLoop(){
 
 function broadcast(){
   const state = {world, ais: ais.map(a=>({
-    id:a.id, x:a.x, y:a.y, hp:a.hp, message:a.message, type:a.type
-  }))};
+    id:a.id, x:a.x, y:a.y, hp:a.hp, type:a.type, attackEffect:a.attackEffect||null, slave:a.slave
+  })), castles};
   wss.clients.forEach(client=>{
     if(client.readyState===WebSocket.OPEN) client.send(JSON.stringify(state));
   });
