@@ -4,7 +4,7 @@ const http = require("http");
 
 const app = express();
 app.use(express.static("public"));
-app.get('/healthz', (req, res) => res.send('OK'));
+app.get('/healthz', (req,res)=>res.send("OK"));
 
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
@@ -25,27 +25,33 @@ class AI {
     this.inventory = [];
     this.message = "";
     this.target = null;
+    this.slave = false;
   }
 
   applyGravity(world){
-    if(this.y < WORLD_HEIGHT-1 && world[this.x][this.y+1] === "air"){
+    if(this.y < WORLD_HEIGHT-1 && world[this.x][this.y+1]==="air"){
       this.y += GRAVITY;
     }
   }
 
   act(world, ais){
-    if(this.hp <= 0) return;
+    if(this.hp<=0) return;
 
-    this.applyGravity(world); // 重力適用
+    // 目標追従
+    if(this.target){
+      this.x += Math.sign(this.target.x - this.x);
+      this.y += Math.sign(this.target.y - this.y);
+      if(this.x === this.target.x && this.y === this.target.y) this.target = null;
+    }
+
+    this.applyGravity(world);
 
     let action = AI_ACTIONS[Math.floor(Math.random()*AI_ACTIONS.length)];
 
-    if(action==="move"){
+    if(action==="move" && !this.target){
       let nx = this.x + (Math.random()<0.5?-1:1);
       let ny = this.y;
-      if(nx>=0 && nx<WORLD_WIDTH && world[nx][ny+1]!=="air"){
-        this.x = nx;
-      }
+      if(nx>=0 && nx<WORLD_WIDTH && world[nx][ny+1]!=="air") this.x = nx;
       this.message = this.isGiant ? "我こそがこの地の王だ" : "";
     }
 
@@ -70,18 +76,37 @@ class AI {
     }
 
     if(action==="chat"){
-      this.message = this.isGiant?"我が支配する！":`AI${this.id}が周囲とおしゃべり`;
+      if(this.isGiant){
+        this.message = "服従せよ！";
+        // 脅しで奴隷化
+        ais.forEach(other=>{
+          if(!other.isGiant && Math.abs(other.x-this.x)<5){
+            other.slave = true;
+            other.target = {x:this.x, y:this.y};
+            other.message = "服従中…";
+          }
+        });
+      } else {
+        this.message = "集まれ！";
+        ais.forEach(other=>{
+          if(other.id!==this.id && Math.random()<0.5){ 
+            other.target = {x:this.x, y:this.y};
+          }
+        });
+      }
     }
 
-    if(action==="rest") this.message = "";
+    if(action==="rest") this.message="";
   }
 
   respawn(){
     this.hp = this.isGiant ? 300 : 100;
     this.x = Math.floor(Math.random()*WORLD_WIDTH);
-    this.y = Math.floor(Math.random()*WORLD_HEIGHT);
+    this.y = getGroundY(this.x);
     this.inventory = [];
-    this.message = this.isGiant?"我こそがこの地の王だ":"";
+    this.message = this.isGiant ? "我こそがこの地の王だ" : "";
+    this.slave = false;
+    this.target = null;
   }
 }
 
@@ -106,17 +131,25 @@ for(let i=0;i<50;i++){
 }
 
 // AI初期化
+function getGroundY(x){
+  for(let y=0;y<WORLD_HEIGHT;y++){
+    if(world[x][y]!=="air") return y-1;
+  }
+  return WORLD_HEIGHT-21;
+}
+
 let ais = [];
 for(let i=0;i<NUM_NORMAL_AI;i++){
-  ais.push(new AI(i, Math.floor(Math.random()*WORLD_WIDTH), Math.floor(Math.random()*WORLD_HEIGHT)));
+  let x = Math.floor(Math.random()*WORLD_WIDTH);
+  ais.push(new AI(i, x, getGroundY(x)));
 }
-ais.push(new AI(NUM_NORMAL_AI, Math.floor(WORLD_WIDTH/2), Math.floor(WORLD_HEIGHT/2), true));
+ais.push(new AI(NUM_NORMAL_AI, Math.floor(WORLD_WIDTH/2), getGroundY(Math.floor(WORLD_WIDTH/2)), true));
 
 // ゲームループ
 function gameLoop(){
   ais.forEach(ai=>{
     ai.act(world, ais);
-    if(ai.hp <= 0) ai.respawn();
+    if(ai.hp<=0) ai.respawn();
   });
   broadcast();
 }
