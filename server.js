@@ -4,14 +4,13 @@ const http = require("http");
 
 const app = express();
 app.use(express.static("public"));
-
-app.get('/healthz', (req, res) => res.send('OK')); // ヘルスチェック
+app.get('/healthz', (req, res) => res.send('OK'));
 
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
-const WORLD_WIDTH = 50;
-const WORLD_HEIGHT = 30;
+const WORLD_WIDTH = 200;
+const WORLD_HEIGHT = 100;
 const NUM_NORMAL_AI = 20;
 const AI_ACTIONS = ["move","dig","build","chat","rest","attack"];
 
