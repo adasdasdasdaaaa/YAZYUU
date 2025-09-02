@@ -9,9 +9,9 @@ let ais = [];
 let cameraX = 0;
 let cameraY = 0;
 
-const TILE_SIZE = 16;
-const NORMAL_AI_SIZE = 24;
-const GIANT_SIZE = 32;
+const TILE_SIZE = 32;
+const NORMAL_AI_SIZE = 48;
+const GIANT_SIZE = 64;
 
 // Canvasを画面全体にリサイズ
 function resizeCanvas(){
@@ -31,7 +31,7 @@ ws.onmessage = e=>{
 
 // キーでスクロール
 document.addEventListener("keydown", e=>{
-  const speed = 16;
+  const speed = 32;
   if(e.key==="ArrowLeft") cameraX = Math.max(0, cameraX - speed);
   if(e.key==="ArrowRight") cameraX = Math.min(world.length*TILE_SIZE - canvas.width, cameraX + speed);
   if(e.key==="ArrowUp") cameraY = Math.max(0, cameraY - speed);
